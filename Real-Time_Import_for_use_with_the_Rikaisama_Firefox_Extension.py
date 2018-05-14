@@ -201,6 +201,9 @@ class Anki:
         return self.curDeck()['name']
 
 
+#
+# UDP Message Server
+#
 class MessageCommand():
     def __init__(self, filename):
         writeLog("MessageCommand.__init__: START")
@@ -350,11 +353,15 @@ except:
 
 
 
-API_VERSION = 5
+#
+# TCP Server
+#
+
+# Note, this code was taken from the Anki plugin "AnkiConnect", which was built for Yomichan
+
 TICK_INTERVAL = 25
 URL_TIMEOUT = 10
-# URL_UPGRADE = 'https://raw.githubusercontent.com/FooSoft/anki-connect/master/AnkiConnect.py'
-NET_ADDRESS = os.getenv('ANKICONNECT_BIND_ADDRESS', '127.0.0.1')
+NET_ADDRESS = '127.0.0.1'
 NET_BACKLOG = 5
 NET_PORT = 49601
 
@@ -518,7 +525,7 @@ class AjaxServer:
 
     def handlerWrapper(self, req):
         if len(req.body) == 0:
-            body = makeBytes('AnkiConnect v.{}'.format(API_VERSION))
+            body = makeBytes('Real-Time Import')
         else:
             try:
                 params = json.loads(makeStr(req.body))
@@ -567,7 +574,7 @@ class TcpServer:
         except:
             QMessageBox.critical(
                 self.anki.window(),
-                'AnkiConnect',
+                'Anki Real-Time Import',
                 'Failed to listen on port {}.\nMake sure it is available and is not in use.'.format(NET_PORT)
             )
 
@@ -577,9 +584,6 @@ class TcpServer:
 
 
     def handler(self, request):
-        name = request.get('action', '')
-        version = request.get('version', 4)
-        params = request.get('params', {})
         reply = {'result': {'response': None}, 'error': None}
 
         try:
@@ -590,10 +594,7 @@ class TcpServer:
         except Exception as e:
             reply['error'] = str(e)
 
-        if version > 4:
-            return reply
-        else:
-            return reply['result']
+        return reply
 
     def callMethod(self, request):
         name = request.get('action', '')
@@ -610,17 +611,13 @@ class TcpServer:
     def addNote(self, fields):
         # Don't add if in deck browser (Note: it will work, but might be confusing)
         if aqt.mw.state != "deckBrowser":
-            if fields is None:
-                return 'This is wrong'
-
             # Add Note
             self.anki.addNote(self.anki.curDeckName(), self.anki.curModelName(), fields)
-            showTooltip('Note Added', 1000)
             return 'Ok'
         else:
             showTooltip('Error, you must open a deck first!', 1000)
 
-        return 'Deck not open'
+        return ''
 
     def media(self):
         collection = aqt.mw.col
@@ -628,9 +625,9 @@ class TcpServer:
             return collection.media
 
     def downloadAudio(self, filename, url):
-        data = download(url);
+        data = download(url)
         self.media().writeData(filename, data)
 
-        return 'Audio Downloaded'
+        return ''
 
 connect = TcpServer()
