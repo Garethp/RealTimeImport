@@ -374,6 +374,16 @@ class AjaxRequest:
         self.headers = headers
         self.body = body
 
+def download(url):
+    try:
+        resp = web.urlopen(url, timeout=URL_TIMEOUT)
+    except web.URLError as e:
+        raise Exception('A urlError has occurred for url ' + url + '. Error messages was: ' + e.message)
+
+    if resp.code != 200:
+        raise Exception('Return code for url request' + url + 'was not 200. Error code: ' + resp.code)
+
+    return resp.read()
 
 #
 # AjaxClient
@@ -545,6 +555,7 @@ class AjaxServer:
 
 class TcpServer:
     def __init__(self):
+        self.anki = Anki()
         self.server = AjaxServer(self.handler)
 
         try:
@@ -569,11 +580,13 @@ class TcpServer:
         name = request.get('action', '')
         version = request.get('version', 4)
         params = request.get('params', {})
-        reply = {'result': 'Test', 'error': None}
+        reply = {'result': {'response': None}, 'error': None}
 
         try:
-            # Method Calls Here
-            reply['result'] = { 'action': name }
+            method_reply = self.callMethod(request)
+
+            if method_reply is not None:
+                reply['result']['response'] = method_reply
         except Exception as e:
             reply['error'] = str(e)
 
@@ -581,5 +594,43 @@ class TcpServer:
             return reply
         else:
             return reply['result']
+
+    def callMethod(self, request):
+        name = request.get('action', '')
+        params = request.get('params', {})
+        reply = None
+
+        if name == 'addNote':
+            return self.addNote(**params)
+        if name == 'downloadAudio':
+            return self.downloadAudio(**params)
+
+        return reply
+
+    def addNote(self, fields):
+        # Don't add if in deck browser (Note: it will work, but might be confusing)
+        if aqt.mw.state != "deckBrowser":
+            if fields is None:
+                return 'This is wrong'
+
+            # Add Note
+            self.anki.addNote(self.anki.curDeckName(), self.anki.curModelName(), fields)
+            showTooltip('Note Added', 1000)
+            return 'Ok'
+        else:
+            showTooltip('Error, you must open a deck first!', 1000)
+
+        return 'Deck not open'
+
+    def media(self):
+        collection = aqt.mw.col
+        if collection is not None:
+            return collection.media
+
+    def downloadAudio(self, filename, url):
+        data = download(url);
+        self.media().writeData(filename, data)
+
+        return 'Audio Downloaded'
 
 connect = TcpServer()
