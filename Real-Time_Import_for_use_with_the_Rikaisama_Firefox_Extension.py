@@ -608,11 +608,11 @@ class TcpServer:
 
         return reply
 
-    def addNote(self, fields):
+    def addNote(self, fields, tags=''):
         # Don't add if in deck browser (Note: it will work, but might be confusing)
         if aqt.mw.state != "deckBrowser":
             # Add Note
-            self.anki.addNote(self.anki.curDeckName(), self.anki.curModelName(), fields)
+            self.anki.addNote(self.anki.curDeckName(), self.anki.curModelName(), fields, tags.split())
             return 'Ok'
         else:
             showTooltip('Error, you must open a deck first!', 1000)
