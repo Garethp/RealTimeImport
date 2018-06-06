@@ -25,7 +25,6 @@
 #### Includes ####
 
 import os, re, codecs
-import PyQt4.QtNetwork
 import aqt
 import anki
 import base64
@@ -47,18 +46,33 @@ from unicodedata import normalize
 
 if sys.version_info[0] < 3:
     import urllib2
+
+    quote = str
     web = urllib2
 
     from PyQt4.QtCore import QTimer
     from PyQt4.QtGui import QMessageBox
+    from PyQt4.QtNetwork import QUdpSocket
 else:
     unicode = str
 
     from urllib import request
+    from urllib.parse import quote
+    from urllib.parse import urlparse
+    from urllib.parse import ParseResult
+
     web = request
 
     from PyQt5.QtCore import QTimer
     from PyQt5.QtWidgets import QMessageBox
+    from PyQt5.QtNetwork import QUdpSocket
+
+
+def stripByUtf8(name):
+    if sys.version_info[0] < 3:
+        return unicode(name.strip())
+    else:
+        return str(name.strip(), 'utf-8')
 
 #### Configuration ####
 
@@ -89,10 +103,8 @@ class Anki:
             writeLog("Note added.")
             return note.id
 
-
     def canAddNote(self, deckName, modelName, fields):
         return bool(self.createNote(deckName, modelName, fields))
-
 
     def createNote(self, deckName, modelName, fields, tags=list()):
         model = self.models().byName(modelName)
@@ -108,7 +120,7 @@ class Anki:
         note.tags = tags
 
         try:
-            for name, value in fields.items():
+            for name, value in list(fields.items()):
                 note[name] = value
         except:
             showTooltip("Error, current note type does not contain the following field: '" + name + "'", 5000);
@@ -127,75 +139,58 @@ class Anki:
         else:
             return note
 
-
     def browseNote(self, noteId):
         browser = aqt.dialogs.open('Browser', self.window())
         browser.form.searchEdit.lineEdit().setText('nid:{0}'.format(noteId))
         browser.onSearch()
 
-
     def startEditing(self):
         self.window().requireReset()
-
 
     def stopEditing(self):
         if self.collection():
             self.window().maybeReset()
 
-
     def window(self):
         return aqt.mw
-
 
     def addUiAction(self, action):
         self.window().form.menuTools.addAction(action)
 
-
     def collection(self):
         return self.window().col
-
 
     def models(self):
         return self.collection().models
 
-
     def modelNames(self):
         return self.models().allNames()
-
 
     def modelFieldNames(self, modelName):
         model = self.models().byName(modelName)
         if model is not None:
             return [field['name'] for field in model['flds']]
 
-
     def decks(self):
         return self.collection().decks
-
 
     def deckNames(self):
         return self.decks().allNames()
 
-
     def curModelID(self):
         return self.collection().conf['curModel']
-
 
     def curDeckID(self):
         return self.collection().conf['curDeck']
 
-
     def curModel(self):
         return self.models().get(self.curModelID())
-
 
     def curDeck(self):
         return self.decks().get(self.curDeckID())
 
-
     def curModelName(self):
         return self.curModel()['name']
-
 
     def curDeckName(self):
         return self.curDeck()['name']
@@ -214,7 +209,7 @@ class MessageCommand():
         self.tags = []
 
         try:
-            self.file = codecs.open(filename, "r", "utf-8-sig")
+            self.file = codecs.open(filename, mode="r", encoding="utf-8-sig")
         except:
             showTooltip("Error, unable to open \"" + filename + "\"");
             writeLog("MessageCommand.__init__: Unable to open \"" + filename + "\"")
@@ -223,7 +218,6 @@ class MessageCommand():
             self.performCommand()
         self.file.close()
 
-
     def performCommand(self):
         writeLog("MessageCommand.performCommand: START")
         if self.command == "add":
@@ -231,7 +225,6 @@ class MessageCommand():
         else:
             showTooltip("Error, invalid command = " + self.command);
             writeLog("MessageCommand.performCommand: Invalid command = " + self.command)
-
 
     def doAdd(self):
         writeLog("MessageCommand.doAdd: START")
@@ -248,7 +241,6 @@ class MessageCommand():
         else:
             writeLog("MessageCommand.doAdd: Unsupported version = " + self.version)
 
-
     def parseHeader(self):
         status = True
         # Get the command and command version
@@ -256,28 +248,25 @@ class MessageCommand():
             items = re.split("\t", self.file.readline())
             self.command = items[0].strip().lower()
             self.version = items[1].strip()
-            writeLog("MessageCommand.parseHeader: command = " + unicode(self.command))
-            writeLog("MessageCommand.parseHeader: version = " + unicode(self.version))
+            writeLog("MessageCommand.parseHeader: command = " + str(self.command))
+            writeLog("MessageCommand.parseHeader: version = " + str(self.version))
         except:
             showTooltip("Error, invalid header line!");
             writeLog("MessageCommand.parseHeader: Invalid header line")
             status = False
         return status
 
-
     def parseFieldNames(self):
         # Get the field names
         self.fieldNames = re.split("\t", self.file.readline())
-        self.fieldNames = [i.strip() for i in self.fieldNames] # strip
+        self.fieldNames = [i.strip() for i in self.fieldNames]  # strip
         writeLog("MessageCommand.parseFieldNames: fieldNames = " + unicode(self.fieldNames))
-
 
     def parseTags(self):
         # Get the tags
         self.tags = re.split(" ", self.file.readline())
-        self.tags = [i.strip() for i in self.tags] # strip
+        self.tags = [i.strip() for i in self.tags]  # strip
         writeLog("MessageCommand.parseTags: tags = \"" + unicode(self.tags) + "\"")
-
 
     def addLineToDeck(self, line):
         # Get the field contents
@@ -295,7 +284,7 @@ class MessageCommand():
 
             # Try to add the card to the deck
             noteId = self.anki.addNote(self.anki.curDeckName(), self.anki.curModelName(),
-                ankiFieldInfo, self.tags)
+                                       ankiFieldInfo, self.tags)
 
             # Anki won't add the card if duplicate, fields names are incorrect, etc.
             if not noteId:
@@ -326,7 +315,7 @@ def showTooltip(text, timeOut=3000):
 def processPendingDatagrams():
     writeLog("processPendingDatagrams: START")
     datagram, host, port = udpSocket.readDatagram(udpSocket.pendingDatagramSize())
-    filename = unicode(datagram.strip())
+    filename = stripByUtf8(datagram)
     writeLog("processPendingDatagrams: filename = " + filename)
 
     # Don't add if in deck browser (Note: it will work, but might be confusing)
@@ -345,13 +334,11 @@ writeLog("-----------------------------------------------------------")
 writeLog("Main: START")
 
 try:
-   udpSocket = PyQt4.QtNetwork.QUdpSocket()
-   udpSocket.bind(PORT);
-   udpSocket.readyRead.connect(processPendingDatagrams)
+    udpSocket = QUdpSocket()
+    udpSocket.bind(PORT);
+    udpSocket.readyRead.connect(processPendingDatagrams)
 except:
-   writeLog("Main: Could not setup connection!")
-
-
+    writeLog("Main: Could not setup connection!")
 
 #
 # TCP Server
@@ -373,6 +360,7 @@ def makeBytes(data):
 def makeStr(data):
     return data.decode('utf-8')
 
+
 #
 # AjaxRequest
 #
@@ -381,7 +369,14 @@ class AjaxRequest:
         self.headers = headers
         self.body = body
 
+
 def download(url):
+    # If we're running python 3, we need to quote out JUST the Japanese characters
+    # For JDIC that's just the query part
+    if sys.version_info[0] >= 3:
+        parsed = urlparse(url)
+        url = ParseResult(parsed.scheme, parsed.netloc, parsed.path, parsed.params, quote(parsed.query, '/&='), parsed.fragment).geturl()
+
     try:
         resp = web.urlopen(url, timeout=URL_TIMEOUT)
     except web.URLError as e:
@@ -392,6 +387,7 @@ def download(url):
 
     return resp.read()
 
+
 #
 # AjaxClient
 #
@@ -401,7 +397,6 @@ class AjaxClient:
         self.handler = handler
         self.readBuff = bytes()
         self.writeBuff = bytes()
-
 
     def advance(self, recvSize=1024):
         if self.sock is None:
@@ -431,7 +426,6 @@ class AjaxClient:
 
         return True
 
-
     def close(self):
         if self.sock is not None:
             self.sock.close()
@@ -439,7 +433,6 @@ class AjaxClient:
 
         self.readBuff = bytes()
         self.writeBuff = bytes()
-
 
     def parseRequest(self, data):
         parts = data.split(makeBytes('\r\n\r\n'), 1)
@@ -458,8 +451,9 @@ class AjaxClient:
         if totalLength > len(data):
             return None, 0
 
-        body = data[headerLength : totalLength]
+        body = data[headerLength: totalLength]
         return AjaxRequest(headers, body), totalLength
+
 
 #
 # AjaxServer
@@ -471,10 +465,8 @@ class AjaxServer:
         self.sock = None
         self.resetHeaders()
 
-
     def setHeader(self, name, value):
         self.extraHeaders[name] = value
-
 
     def resetHeaders(self):
         self.headers = [
@@ -484,19 +476,16 @@ class AjaxServer:
         ]
         self.extraHeaders = {}
 
-
     def getHeaders(self):
         headers = self.headers[:]
         for name in self.extraHeaders:
             headers.append([name, self.extraHeaders[name]])
         return headers
 
-
     def advance(self):
         if self.sock is not None:
             self.acceptClients()
             self.advanceClients()
-
 
     def acceptClients(self):
         rlist = select.select([self.sock], [], [], 0)[0]
@@ -508,10 +497,8 @@ class AjaxServer:
             clientSock.setblocking(False)
             self.clients.append(AjaxClient(clientSock, self.handlerWrapper))
 
-
     def advanceClients(self):
         self.clients = list(filter(lambda c: c.advance(), self.clients))
-
 
     def listen(self):
         self.close()
@@ -521,7 +508,6 @@ class AjaxServer:
         self.sock.setblocking(False)
         self.sock.bind((NET_ADDRESS, NET_PORT))
         self.sock.listen(NET_BACKLOG)
-
 
     def handlerWrapper(self, req):
         if len(req.body) == 0:
@@ -549,7 +535,6 @@ class AjaxServer:
 
         return resp
 
-
     def close(self):
         if self.sock is not None:
             self.sock.close()
@@ -559,6 +544,7 @@ class AjaxServer:
             client.close()
 
         self.clients = []
+
 
 class TcpServer:
     def __init__(self):
@@ -578,10 +564,8 @@ class TcpServer:
                 'Failed to listen on port {}.\nMake sure it is available and is not in use.'.format(NET_PORT)
             )
 
-
     def advance(self):
         self.server.advance()
-
 
     def handler(self, request):
         reply = {'result': {'response': None}, 'error': None}
@@ -629,5 +613,6 @@ class TcpServer:
         self.media().writeData(filename, data)
 
         return ''
+
 
 connect = TcpServer()
