@@ -83,7 +83,7 @@ PORT = 49600
 ALLOW_DUPLICATES = False
 
 # Debugging
-DEBUG = True
+DEBUG = False
 LOG_FILE = os.path.join(aqt.mw.pm.base, "addons", "real_time_import.log");
 CLEAR_LOG_AT_STARTUP = True
 
